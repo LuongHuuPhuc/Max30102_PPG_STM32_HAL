@@ -1,1 +1,9 @@
+*/.ioc/
+*/.launch/
+*/.cfg/
+*/.ld/
+**/Driver/
+**/Include/
+**/Debug/
+**/Startup/
 **/.settings/

@@ -21,8 +21,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include<stdio.h>
-#include<max30102_for_stm32_hal.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <stdarg.h>
+#include <max30102_for_stm32_hal.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -46,21 +49,7 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
-//printf() function
-int __io_putchar(int ch)
-{
-	uint8_t temp = ch;
-	HAL_UART_Transmit(&huart1, &temp, 1, HAL_MAX_DELAY);
-	return ch;
-}
-
-//Override plot function
-void max30102_plot(uint32_t ir_sample, uint32_t red_sample)
-{
-	printf("%lu,%lu\n", ir_sample, red_sample);
-}
-
-//Max30102 object
+char uart_buf[1024];
 max30102_t max30102_obj;
 /* USER CODE END PV */
 
@@ -75,6 +64,32 @@ static void MX_USART1_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+
+// For printf() function
+int __io_putchar(int ch) {
+	uint8_t temp = ch;
+	HAL_UART_Transmit(&huart1, &temp, 1, HAL_MAX_DELAY);
+	return ch;
+}
+
+void __attribute__((unused))uart_printf(const char *fmt,...){
+	va_list args;
+	va_start(args, fmt);
+	vsnprintf(uart_buf, sizeof(uart_buf), fmt, args);
+	va_end(args);
+	HAL_UART_Transmit(&huart1, (uint8_t*)uart_buf, strlen(uart_buf), HAL_MAX_DELAY);
+}
+
+// Override ham goc do la __weak
+void max30102_plot(uint32_t ir_sample, uint32_t red_sample){
+	uart_printf("%lu,%lu\n", ir_sample, red_sample);
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
+	if(GPIO_Pin == INT_Pin){
+		max30102_interrupt_handler(&max30102_obj);
+	}
+}
 
 /* USER CODE END 0 */
 
@@ -109,22 +124,26 @@ int main(void)
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+
   //Initialization
   max30102_init(&max30102_obj, &hi2c1);
   max30102_reset(&max30102_obj);
+  HAL_Delay(100);
+
   max30102_clear_fifo(&max30102_obj);
   max30102_set_fifo_config(&max30102_obj, max30102_smp_ave_4, 1, 7);
 
   //Sensor settings
-  max30102_set_led_pulse_width(&max30102_obj, max30102_pw_18_bit);
-  max30102_set_adc_resolution(&max30102_obj, max30102_adc_16384);
-  max30102_set_sampling_rate(&max30102_obj, max30102_sr_800);
+  max30102_set_led_pulse_width(&max30102_obj, max30102_pw_16_bit);
+  max30102_set_adc_resolution(&max30102_obj, max30102_adc_8192);
+  max30102_set_sampling_rate(&max30102_obj, max30102_sr_200);
   max30102_set_led_current_1(&max30102_obj, 6.2);
   max30102_set_led_current_2(&max30102_obj, 6.2);
 
   //Enter SpO2 mode
   max30102_set_mode(&max30102_obj, max30102_spo2);
   max30102_set_a_full(&max30102_obj, 1);
+  max30102_set_ppg_rdy(&max30102_obj, 1);
 
   //Initialize 1 temperature measurement
   max30102_set_die_temp_en(&max30102_obj, 1);
@@ -139,14 +158,14 @@ int main(void)
   while (1)
   {
 	  //If interrupt flag is active
-	  if(max30102_has_interrupt(&max30102_obj))
-	  {
+	  if(max30102_has_interrupt(&max30102_obj)) {
 		  //Run interrupt handler to read FIFO
-		  max30102_interrupt_handler(&max30102_obj);
+		  max30102_interrupt_handler(&max30102_obj); //max30102_read_fifo() duoc de trong ham nay roi
 	  }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+//	  max30102_read_fifo(&max30102_obj);
   }
   /* USER CODE END 3 */
 }
@@ -205,7 +224,7 @@ static void MX_I2C1_Init(void)
 
   /* USER CODE END I2C1_Init 1 */
   hi2c1.Instance = I2C1;
-  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.ClockSpeed = 400000;
   hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
   hi2c1.Init.OwnAddress1 = 0;
   hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
